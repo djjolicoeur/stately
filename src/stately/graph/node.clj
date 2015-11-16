@@ -9,18 +9,18 @@
 ;;
 
 
-(defprotocol Node
+(defprotocol INode
   "Basic protocols necessary to constitute a node"
   (successors [this] "Return set of successor names")
   (accept? [this] "is this an accept state? (terminal?)")
   (reject? [this] "is this a reject stat? (terminal...?)"))
 
 
-(defprotocol EventNode
+(defprotocol IEventNode
   "Protocol for nodes that will receive events"
   (send-input [this data] [this data event] "Deliver input"))
 
-(defprotocol TimeoutNode
+(defprotocol ITimeoutNode
   "protocols for nodes that will expire, that is are bound by time"
   (expire-in [this data] "Return a wait time (in milliseconds) based on data")
   (send-timeout [this data] "Deliver timeout"))
@@ -38,33 +38,33 @@
 ;; requires a list of possible successor nodes
 ;; and the function that sends data to the machine
 (defrecord StartNode [successors decision-fn]
-  Node
+  INode
   (successors [this] successors)
   (accept? [this] false)
   (reject? [this] false)
-  EventNode
+  IEventNode
   (send-input [this data]
     (decision-fn data))
   (send-input [this data event]
     (decision-fn data event)))
 
 
-;; basic nodes = node + event node + timeout node
+;; nodes = inode + event node + timeout node
 ;; as defined by the functions passed in as args
 ;; decision-fn -  where do I go given an event or some data?
 ;; expire-fn - where do I go when I timeout?
 ;; expire-in-fn - how long do I wait?
-(defrecord BasicNode [successors decision-fn expire-fn expire-in-fn]
-  Node
+(defrecord Node [successors decision-fn expire-fn expire-in-fn]
+  INode
   (successors [this] successors)
   (accept? [this] false)
   (reject? [this] false)
-  EventNode
+  IEventNode
   (send-input [this data]
     (decision-fn data))
   (send-input [this data event]
     (decision-fn data event))
-  TimeoutNode
+  ITimeoutNode
   (send-timeout [this data]
     (expire-fn data))
   (expire-in [this data]
@@ -74,7 +74,7 @@
 ;; Accept nodes they signal that our machine has reached
 ;; the accept state. Pretty boring.
 (defrecord AcceptNode []
-  Node
+  INode
   (successors [this] nil)
   (accept? [this] true)
   (reject? [this] false))
@@ -84,7 +84,7 @@
 ;; or failure state.  Maybe not so boring, but doesn't do much
 ;; for us either
 (defrecord RejectNode []
-  Node
+  INode
   (successors [this] nil)
   (accept? [this] false)
   (reject? [this] true))
@@ -114,7 +114,7 @@
    decision-fn definition MUST handle [data] AND [data event] arg vectors
    decision nodes are the 'routers' of our state machines."
   [successors decision-fn]
-  (->BasicNode successors decision-fn decision-fn (constantly 0)))
+  (->Node successors decision-fn decision-fn (constantly 0)))
 
 
 (defn wait-node
@@ -124,10 +124,10 @@
   a time given by a fn passed in or indefinitely for input, should
   you so desire"
   ([successors decision-fn expire-node expire-in-fn]
-   (->BasicNode successors
-                decision-fn
-                (constantly expire-node)
-                expire-in-fn))
+   (->Node successors
+           decision-fn
+           (constantly expire-node)
+           expire-in-fn))
   ([successors decision-fn expire-node]
    (wait-node successors
                        decision-fn
@@ -141,10 +141,10 @@
    to next node, unless input interrupts.  Interrupt node
    can be self referencing as well (pipe node back to this node)"
   ([successors interrupt-node next-node]
-    (->BasicNode successors
-              (constantly interrupt-node)
-              (constantly next-node)
-              (constantly 0)))
+    (->Node successors
+            (constantly interrupt-node)
+            (constantly next-node)
+            (constantly 0)))
   ([successors next-node]
    (action-node successors next-node next-node))
   ([next-node]
@@ -158,10 +158,10 @@
   and execute timeout-fn.  any input into the machine before expire
   will go to the interrupt-node"
   [successors interrupt-node expire-fn expire-in-fn]
-  (->BasicNode successors
-            (constantly interrupt-node)
-            expire-fn
-            expire-in-fn))
+  (->Node successors
+          (constantly interrupt-node)
+          expire-fn
+          expire-in-fn))
 
 
 

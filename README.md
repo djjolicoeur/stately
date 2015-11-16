@@ -8,6 +8,12 @@
 *pre* pre alpha quality. More of an idea than anything useful at this point. Use
 at your own risk
 
+This readme is a work in progress as well.  I will update as time allows
+
+### next steps
+* testing -- in progress
+* better examples -- on deck
+
 ## Rational
 
 Over the course of my career I have come across numerous scenarios that involve
@@ -15,11 +21,14 @@ managing a lifecycle of side effects that are related to domain entities.
 The most frequent manifestation of this scenario that I have seen is writing cron
 jobs, or polling a database to look for domain entity `X` and do `Y` with it, e.g.
 notify a user or update some attribute. These are your "batch jobs" or
-"workflows". One of the problems I have consistently run into in this scenario is
-that you tend to wind up with these muddled bunch of spaghetti code that is trying
+"workflows".
+
+One of the problems I have consistently run into in this scenario is
+that I wind up with a muddled bunch of spaghetti code that is trying
 to manage the lifecycle of `X` doing `Y` *and* handle the side effects
 simultaneously.  I have had this blow up on me a sufficient number of times
 to write this library in anger.
+
 Stately is a collection of protocols that allows you to build up a
 Finite State Machine (FSM) to manage the state of these side effect lifecycles in
 terms of the domain entity itself and allows you to advance through those stages
