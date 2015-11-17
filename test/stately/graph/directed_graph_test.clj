@@ -24,8 +24,8 @@
                           (constantly :bar)
                           (constantly 0))
           test-nodes {:start n1
-                 :foo n2
-                 :bar node/accept-node}
+                      :foo n2
+                      :bar node/accept-node}
           created (make-graph test-nodes)
           created-graph (graph created)
           created-nodes (nodes created)

@@ -10,21 +10,27 @@
 ;; Other methods might include reset and set-state
 ;; to accommodate migrations
 (defprotocol IStateMachine
-  (advance [g action state data]
-    [g action state data event] "returns the state of machine"))
+  (advance
+    [g action state data]
+    [g action state data event]))
 
 
 ;; Next state multimethod.  Allows us to use a
 ;; single function to determine the next state.
 (defmulti next-state
-  (fn
-    ([_ action _ _] action)
-    ([_ action _ _ _] action)))
+  (fn [_ action & args] action))
+    ;([_ action _ _] action)
+    ;([_ action _ _ _] action)))
 
 ;; Determine what the next state should be given an input event
-(defmethod next-state :input [g action state data event]
-  (let [next (node/send-input (get (dg/nodes  g) state) data event)]
-    (if (graph/has-edge? (dg/graph g) state next) next :rej)))
+(defmethod next-state :input
+  ([g action state data event]
+   (let [next (node/send-input (get (dg/nodes  g) state) data event)]
+     (if (graph/has-edge? (dg/graph g) state next) next :rej)))
+  ([g action state data]
+   (let [next (node/send-input (get (dg/nodes  g) state) data)]
+     (if (graph/has-edge? (dg/graph g) state next) next :rej))))
+
 
 ;; Determine what the next state should be given a timeout
 (defmethod next-state :expire [g action state data]
@@ -52,8 +58,7 @@
 ;; and when to timeout the current state.
 (defrecord StateMachine [graph]
   IStateMachine
-  (advance
-    [this action state data]
+  (advance [this action state data]
     (let [nodes (dg/nodes graph)
           current-state (if state state :start)
           next-state (next-state graph action current-state data)
