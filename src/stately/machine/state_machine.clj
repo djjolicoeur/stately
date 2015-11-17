@@ -19,8 +19,7 @@
 ;; single function to determine the next state.
 (defmulti next-state
   (fn [_ action & args] action))
-    ;([_ action _ _] action)
-    ;([_ action _ _ _] action)))
+
 
 ;; Determine what the next state should be given an input event
 (defmethod next-state :input
