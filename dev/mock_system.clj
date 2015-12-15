@@ -7,7 +7,8 @@
             [stately.graph.node :as node]
             [stately.graph.directed-graph :as dag]
             [stately.machine.state-machine :as sm]
-            [stately.core :as stately])
+            [stately.core :as stately]
+            [college-application :refer [new-core]])
   (:import java.util.concurrent.Executors))
 
 
@@ -70,19 +71,6 @@
     :gpa 2.2}})
 
 
-;; Component that implements StatelyComponent
-(defrecord BasicComponent [state-store data-store executor]
-  component/Lifecycle
-  (start [this] this)
-  (stop [this] this)
-  stately/StatelyComponent
-  (state-store [this] (:atom-store state-store))
-  (data-store [this] (:data-store data-store))
-  (executor [this] (:basic-executor executor)))
-
-(defn stately-component []
-  (map->BasicComponent {}))
-
 
 ;; System to bootstrap user ns examples
 (defn dev-system []
@@ -97,6 +85,5 @@
    :data-store (component/using
                 (new-data-store) [:bootstrap-data])
    :stately-component
-   (component/using
-    (stately-component)
+   (component/using (new-core)
     [:state-store :data-store :executor])))
