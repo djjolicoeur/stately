@@ -60,31 +60,31 @@
     (exec/schedule (executor core)
                    (executable core ref new-state) (:next-in new-state)))
   (input [this event]
-    (info "RECEIVED EVENT" event)
+    (info "Received Event" event)
     (let [state (get-state this)
           data (data this event)
           new-state (sm/advance (state-machine core)
                                 :input (:state state) data event)]
-      (info "TRANSITIONED TO STATE" new-state)
+      (info "Transitioned to State" new-state)
       (when (handle-state this new-state)
         (persist-state this new-state)
         (when (:next-in new-state)
           (schedule-executor this new-state)))))
   (expire [this]
-    (info "EXPIRING" ref)
+    (info "Expiring" ref)
     (let [state (get-state this)
           data (data this)
           new-state (sm/advance (state-machine core)
                                 :expire (:state state) data)]
-      (info "EXPIRED TO STATE " new-state)
+      (info "Expired to State" new-state)
       (when (handle-state this new-state)
         (persist-state this new-state)
         (when (:next-in new-state)
           (schedule-executor this new-state)))))
   (reschedule [this]
     (let [state (get-state this)
-          now (java.util.Date.)
-          tx (:tx state)
+          now (.getTime (java.util.Date.))
+          tx (.getTime (:tx state))
           delta (- now tx)]
       (when (:next-in state)
         (let [next-in (- (:next-in state) delta)]
@@ -93,12 +93,17 @@
 
 (defn executable [core ref state]
   (fn []
-    (info "EXECUTING SCHEDULED JOB" "")
+    (info "Executing Scheduled Job" "")
     (let [current (->SimpleStately core ref)
           new-state (get-state current)]
-      (info "COMPARING NEW STATE" new-state "OLD STATE" state)
+      (info "New State" new-state "Old State" state)
       (when (= state new-state)
         (expire current)))))
 
 (defn stately [core ref]
   (->SimpleStately core ref))
+
+(defn bootstrap-executor [core]
+  (let [refs (ss/all-refs (state-store core))]
+    (doseq [ref refs]
+      (reschedule (->SimpleStately core ref)))))

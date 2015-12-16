@@ -102,12 +102,14 @@
 (def restart-facts
   [{:db/id #db/id[:db.part/user -1]
     :model/type :applicant
+    :applicant/status :received
     :applicant/name "Dan"
     :applicant/school "UMBC"
     :applicant/gpa 3.3}
 
    {:db/id #db/id[:db.part/user -2]
     :model/type :applicant
+    :applicant/status :received
     :applicant/name "Casey"
     :applicant/school "Salisbury"
     :applicant/gpa 3.5}
@@ -118,20 +120,22 @@
     :applicant/school "UMD"
     :applicant/gpa 2.2}
 
-   {:db/id #db/id[:db.part/user]
+   {:db/id #db/id[:db.part/user -5]
     :model/type :application.state
-    :application.state/ref -1
-    :application.state/state :recieve-application
+    :application.state/ref #db/id[:db.part/user -1]
+    :application.state/state :receive-application
     :application.state/accept? false
     :application.state/reject? false
+    :application.state/next-in 3000
     :application.state/tx (java.util.Date.)}
 
-   {:db/id #db/id[:db.part/user]
+   {:db/id #db/id[:db.part/user -6]
     :model/type :application.state
-    :application.state/ref -2
-    :application.state/state :recieve-application
+    :application.state/ref #db/id[:db.part/user -2]
+    :application.state/state :receive-application
     :application.state/accept? false
     :application.state/reject? false
+    :application.state/next-in 3000
     :application.state/tx (java.util.Date.)}])
 
 
@@ -254,12 +258,13 @@
            db ref)
       ffirst))
 
-(defn get-states [db]
-  (->> (d/q '[:find (pull ?e [:application.state/ref])
-              :where [?e :model/type :application.state]]))
-  (map :application.state/ref))
 
-(defrecord DatomicStateStore [system]
+(defn get-states [db]
+  (->> (d/q '[:find (pull ?e [{:application.state/ref [:db/id]}])
+              :where [?e :model/type :application.state]] db)
+       (map #(get-in  (first %) [:application.state/ref :db/id]))))
+
+(defrecord ApplicationStateStore [system]
   state-store/StateStore
   (get-state [this ref]
     (let [db (d/db (:conn (:db system)))
@@ -405,6 +410,6 @@
   (state-machine [this] machine)
   (data-fn [this] data-fn)
   (handle-state-fn [this] handle-state-fn)
-  (state-store [this] (->DatomicStateStore system))
+  (state-store [this] (->ApplicationStateStore system))
   (data-store [this] (->DatomicDataStore system))
   (executor [this] (mk-executor system)))
