@@ -10,4 +10,5 @@
                  [com.stuartsierra/component "0.2.3"]
                  [aysylu/loom "0.5.0"]]
   :profiles {:dev {:source-paths ["dev"]
-                   :plugins [[cider/cider-nrepl "0.10.0-SNAPSHOT"]]}})
+                   :plugins [[cider/cider-nrepl "0.10.0-SNAPSHOT"]]}
+             :test {:dependencies [[com.datomic/datomic-free "0.9.5344"]]}})

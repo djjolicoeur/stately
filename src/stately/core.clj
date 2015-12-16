@@ -29,7 +29,8 @@
   (handle-state [this new-state] "handle side effects of new state")
   (get-state [this] "look up current state")
   (persist-state [this new-state] "save state of workflow")
-  (schedule-executor [this new-state] "schedule timeout"))
+  (schedule-executor [this new-state] "schedule timeout")
+  (reschedule [this] "reschedule a state with the executor"))
 
 
 (declare executable)
@@ -41,8 +42,7 @@
 ;; - component - a StatelyComponent
 ;; - id - a unique identifier for a particular instance of state
 ;; - ref - reference into the data-store
-(defrecord SimpleStately
-    [core ref]
+(defrecord SimpleStately [core ref]
   IStately
   (get-state [this] (ss/get-state (state-store core) ref))
   (persist-state [this new-state]
@@ -80,7 +80,16 @@
       (when (handle-state this new-state)
         (persist-state this new-state)
         (when (:next-in new-state)
-          (schedule-executor this new-state))))))
+          (schedule-executor this new-state)))))
+  (reschedule [this]
+    (let [state (get-state this)
+          now (java.util.Date.)
+          tx (:tx state)
+          delta (- now tx)]
+      (when (:next-in state)
+        (let [next-in (- (:next-in state) delta)]
+          (exec/schedule (executor core)
+                         (executable core ref state) (max next-in 0)))))))
 
 (defn executable [core ref state]
   (fn []
