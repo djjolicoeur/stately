@@ -1,5 +1,11 @@
 (ns stately.util
-  (:require [datomic.api :as d]))
+  (:require [datomic.api :as d]
+            [com.stuartsierra.component :as component]
+            [clojure.tools.logging :refer [debug info warn error]]
+            [stately.components.executor :as exec]
+            [stately.components.data-store :as data-store]
+            [stately.components.state-store :as  state-store])
+  (:import java.util.concurrent.Executors))
 
 
 (def test-schema
@@ -64,7 +70,7 @@
     :db.install/_attribute :db.part/db}])
 
 
-(def fresh-test-facts
+(def fresh-facts
   [{:db.id #db/id[:db.part/user]
     :model/type :applicant
     :applicant/name "Dan"
@@ -121,42 +127,115 @@
 
 
 (defn bootstrap [conn]
-  (let [schema (io/reader "resources/schema.edn")]
-    (doseq [datom (datomic.Util/readAll schema)]
-      @(d/transact conn [datom]))))
+  (doseq [attr test-schema]
+      @(d/transact conn [attr])))
 
-(defn load-facts [conn]
-  (let [facts (io/reader "resources/dev-facts.edn")]
-    (doseq [datom (datomic.Util/readAll facts)]
-      @(d/transact conn [datom]))))
+(defn load-facts [conn facts]
+  @(d/transact conn facts))
 
-(defrecord Datomic [datomic-uri conn]
+(defrecord Datomic [datomic-uri facts conn]
   component/Lifecycle
   (start [this]
     (info "START DB " nil)
     (if conn
       this
-      (let [_ (info "URI " datomic-uri)
-            datomic-uri (cond-> datomic-uri
-                          dev-facts? (str "-" (java.util.UUID/randomUUID)))
+      (let [rand (java.util.UUID/randomUUID)
+            datomic-uri (str datomic-uri "-" (java.util.UUID/randomUUID))
+            _ (info "URI " datomic-uri)
             db (d/create-database datomic-uri)
             conn (d/connect datomic-uri)]
         (info "LOADING SCHEMA" nil)
         (bootstrap conn)
-        (when dev-facts?
-          (info "LOADING FACTS" nil)
-          (load-facts conn))
+        (info "LOADING FACTS" nil)
+        (load-facts conn facts)
         (assoc this :conn conn :datomic-uri datomic-uri))))
   (stop [this]
     (if conn
       (do
         (info "STOPPING DB" nil)
-        (when dev-facts?
-          (info "DELETING DB" nil)
-          (d/delete-database (:datomic-uri this)))
+        (info "DELETING DB" nil)
+        (d/delete-database (:datomic-uri this))
         (info "STOPPED DB" nil)
         (assoc this :conn nil :datomic-uri nil))
       this)))
 
-(defn new-datomic-db []
+(defn datomic-db []
   (map->Datomic {}))
+
+
+(defn fresh-system []
+  (component/system-map
+   :executor (Executors/newScheduledThreadPool 2)
+   :datomic-uri "datomic:mem://stately-test"
+   :facts fresh-facts
+   :db (component/using (datomic-db) [:datomic-uri :facts])))
+
+
+(defn restart-system []
+  (component/system-map
+   :executor (Executors/newScheduledThreadPool 2)
+   :datomic-uri "datomic:mem://stately-test"
+   :facts restart-facts
+   :db (component/using (datomic-db) [:datomic-uri :facts])))
+
+
+(def ^:dynamic *system*)
+
+(defn new-fresh-app []
+  (let [sys (component/start (fresh-system))]
+    (alter-var-root #'*system* (constantly sys))))
+
+(defn new-restart-app []
+  (let [sys (component/start (restart-system))]
+    (alter-var-root #'*system* (constantly sys))))
+
+(defn stop-app []
+  (component/stop *system*)
+  (alter-var-root #'*system* (constantly nil)))
+
+
+(defn mk-executor [system]
+  (exec/->BasicJavaExecutor (:executor system)))
+
+(defn state->entity [state]
+  (into {} (map (fn  [[k v]] {(->> k
+                                   name
+                                   (str "application.state/")
+                                   keyword) v})
+                state)))
+
+(defn entity->state [entity]
+  (into {} (map (fn [[k v]] {(name k) v})
+                (dissoc entity :application.state/ref))))
+
+(defn find-ref-state [db ref]
+  (-> (d/q '[:find (pull ?e [* {:application.state/ref [:db/id]}])
+             :in $ ?ref
+             :where [?e :application.state/ref ?ref]]
+           db ref)
+      ffirst))
+
+(defn get-states [db]
+  (->> (d/q '[:find (pull ?e [:application.state/ref])
+              :where [?e :model/type :application.state]]))
+  (map :application.state/ref))
+
+(defrecord DatomicStateStore [system]
+  state-store/StateStore
+  (get-state [this ref]
+    (let [db (d/db (:conn (:db system)))]
+      (entity->state (find-ref-state db ref))))
+  (persist-state! [this ref state]
+    (let [conn (:conn (:db system))
+          state (assoc state :ref ref)
+          e (state->entity state)]
+      @(d/transact conn [e])))
+  (evict-state! [this ref]
+    (let [db (d/db (:conn (:db system)))
+          state (find-ref-state db ref)]
+      (when state
+        @(d/transact (:conn (:db system))
+                     [[:db.fn/retractEntity (:db/id state)]]))))
+  (all-refs [this]
+    (let [db (d/db (:conn (:db system)))]
+      (get-states db))))

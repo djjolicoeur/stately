@@ -15,4 +15,4 @@
     (swap! state-atom assoc ref state))
   (evict-state! [this ref]
     (swap! state-atom dissoc ref))
-  (all-states [this] (keys @state-map)))
+  (all-refs [this] (keys @state-atom)))
