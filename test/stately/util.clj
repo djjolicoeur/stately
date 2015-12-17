@@ -152,8 +152,7 @@
     (println "Starting DB " nil)
     (if conn
       this
-      (let [rand (java.util.UUID/randomUUID)
-            datomic-uri (str datomic-uri "-" (java.util.UUID/randomUUID))
+      (let [datomic-uri (str datomic-uri "-" (java.util.UUID/randomUUID))
             db (d/create-database datomic-uri)
             conn (d/connect datomic-uri)]
         (println "Loading Schema")
