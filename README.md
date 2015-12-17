@@ -14,7 +14,7 @@ This readme is a work in progress as well.  I will update as time allows
 * testing -- in progress
 * better examples -- on deck
 
-## Rational
+## Rationale
 
 Over the course of my career I have come across numerous scenarios that involve
 managing a lifecycle of side effects that are related to domain entities.
@@ -24,7 +24,7 @@ notify a user or update some attribute. These are your "batch jobs" or
 "workflows".
 
 One of the problems I have consistently run into in this scenario is
-that I wind up with a muddled bunch of spaghetti code that is trying
+that I wind up with a muddled bunch of spaghetti code born out of trying
 to manage the lifecycle of `X` doing `Y` *and* handle the side effects
 simultaneously.  I have had this blow up on me a sufficient number of times
 to write this library in anger.
@@ -40,20 +40,25 @@ a separate mechanism outside of state management.
 ## Usage
 
 
-### Necessary Components
+### Necessary Core Components
 Stately provides the building blocks, the usage is entirely up to you.
 Stately needs a few things to be useful.
 * something that implements `stately.components.state-store/StateStore`
 * something that implements `stately.components.data-store/DataStore`
 * something that implements `stately.components.executor/Executor`
+* something that implements `stately.machine.state-machine/IStateMachine`
+* a handle state function.  I choose to implement this as a 4-arity
+  multi-method dispatched on state in my `SimpleStately` impl.
+* a data function.  A function, given the core and a reference, knows
+  how to find the data needed to complete the task at hand
 
-These three building blocks will make up a `stately.core/StatelyComponent`,
-The `StatelyComponent` will be our bridge from our FSM to communicating with
+These are the building blocks will make up a `stately.core/IStatelyCore`,
+The `IStatelyCore` will be our bridge from our FSM to communicating with
 the rest of the system.
 
 I have provided some basic examples of these implementations, but these could be
 extended to anything that fulfills those protocols.  For the stores, I imagine I
-will be throwing something together to hook this up to Datomic fairly soon.
+will be throwing something together to hook this up to Datomic fairly soon (see tests).
 
 ### Nodes
 
@@ -81,17 +86,11 @@ a basic example of creating one would be:
 
 ### Stately
 
-Where everything comes together. Finally. The `state.core.defstately` macro will create a named and bound fn that will in turn create a Stately impl that you can operate on, given a component that implements  `StatelyComponent`.
+The `stately.core/IStately` protocol is the link between an individual domain
+entity and the state machine in IStatelyCore.  There is an implemenation
+via `stately.core/SimpleStately` and can be invoked by passing and `IStateCore`
+and a reference to a domain entity a-la `(stately.core/->SimpleStately core ref)`.
 
-The macro takes 4 args
-* name - a name to bind to
-* state-machine - the StateMachine that manages the lifecycle
-* data-fn - given an impl of `stately.components.data-store/DataStore`,
- how to get the data for a reference
-* state-handler-fn - a multimehod on the state.  This is the function that
-handles the side effects that result from state transitions. The machine
-handles the lifecycle, this handles the side effects. This is the separation of
-concerns.
 
 at a high level, this works as follows
 
@@ -99,7 +98,7 @@ at a high level, this works as follows
 (defn simple-data-fn [data-store ref]
   (get  @data-store ref))
 
-(defmulti handle-state-fn
+(defmulti handle-state
   (fn [_ new-state _ _] new-state))
 
 ;;... define impl of handlers here
@@ -110,17 +109,32 @@ at a high level, this works as follows
 
 (def machine (stately.machine.state-machine/make-machine nodes))
 
-(stately.core/defstately my-stately machine simple-data-fn handle-state-fn)
+(defrecord ExampleStatelyCore [data-atom state-atom executor-pool]
+  stately.core/IStatelyCore
+  (state-machine [this] machine)
+  (handle-state-fn [this] handle-state)
+  (data-fn [this] simple-data-fn)
+  (data-store [this] (stately.components.data-store/->AtomDataStore data-atom))
+  (state-store [this] (stately.components.state-store/->AtomStateStore state-atom))
+  (executor [this]
+    (stately.components.executor/->BasicJavaExecutor executor-pool)))
+
+(def example-core
+  (->ExampleStatelyCore (atom {}) (atom {}) (Executors/newScheduledThreadPool 2))) 
+
 
 ;; now you have something you can send events to
 
-(-> (my-stately my-stately-component my-data-reference)
-    (input my-event))
+(-> (stately.core/stately example-core my-data-reference)
+    (stately/input my-event))
 ```
 
 ### Complete Examples
-I have also provided a very basic example in the `dev/user` namespace, based
-on a system created in `dev/mock-system`.
+I have also provided a very basic example in the `dev/college-application` and
+`dev/user` namespace, based on a system created in `dev/mock-system` using the
+provided atom store impls. There is also an analogous example of the same
+functionality based on datomic in the tests in the `util`, `core`, and
+`resumable-executor` namespaces.  
 
 to see it in action, repl in and
 
@@ -132,7 +146,14 @@ to see it in action, repl in and
 you will have ~30 seconds to poke around using the functions in the user NS to see
 what is going on in the state store, data store, etc...
 
+### What happens when I stop and start a system?  Do I lose everything?
 
+There is a function in `stately.core`, `stately.core/bootstrap-executor` that
+takes an implementation of `stately.core/IStatelyCore` as its sole argument.  This
+will load the states persisted in the core's `StateStore` impl into the cores executor,
+accounting for the time delta between when the state was transacted and the current
+time.  I would highly recomend leveraging Stuart Sierras component pattern here and
+building that into the lifecycle of the component in `start`.  
 
 
 ## Acknowledgments

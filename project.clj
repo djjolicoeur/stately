@@ -8,6 +8,12 @@
                  [org.clojure/tools.nrepl "0.2.10"]
                  [org.clojure/tools.namespace "0.2.3"]
                  [com.stuartsierra/component "0.2.3"]
-                 [aysylu/loom "0.5.0"]]
+                 [aysylu/loom "0.5.0"]
+                 [log4j/log4j "1.2.17"
+                  :exclusions [javax.mail/mail
+                               javax.jms/jms
+                               com.sun.jmdk/jmxtools
+                               com.sun.jmx/jmxri]]]
   :profiles {:dev {:source-paths ["dev"]
-                   :plugins [[cider/cider-nrepl "0.10.0-SNAPSHOT"]]}})
+                   :plugins [[cider/cider-nrepl "0.10.0-SNAPSHOT"]]}
+             :test {:dependencies [[com.datomic/datomic-free "0.9.5344"]]}})
