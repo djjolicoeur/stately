@@ -40,15 +40,19 @@ a separate mechanism outside of state management.
 ## Usage
 
 
-### Necessary Components
+### Necessary Core Components
 Stately provides the building blocks, the usage is entirely up to you.
 Stately needs a few things to be useful.
 * something that implements `stately.components.state-store/StateStore`
 * something that implements `stately.components.data-store/DataStore`
 * something that implements `stately.components.executor/Executor`
+* a handle state function.  I choose to implement this as a 4-arity
+  multi-method dispatched on state in my `SimpleStately` impl.
+* a data function.  A function, given the core and a reference, knows
+  how to find the data needed to complete the task at hand
 
-These three building blocks will make up a `stately.core/StatelyComponent`,
-The `StatelyComponent` will be our bridge from our FSM to communicating with
+These three building blocks will make up a `stately.core/IStatelyCore`,
+The `IStatelyCore` will be our bridge from our FSM to communicating with
 the rest of the system.
 
 I have provided some basic examples of these implementations, but these could be
