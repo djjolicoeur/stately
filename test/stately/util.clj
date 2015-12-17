@@ -297,11 +297,6 @@
 (defn data-fn [data-store ref]
   (d/pull (d/db data-store) '[*] ref))
 
-;; state transition handlers -- given a state, what side effects should happen
-;; e.g. write to the database, log, or notify the user
-(defmulti handle-state-fn
-  (fn [_ new-state _ _] new-state))
-
 
 ;; state transition handlers -- given a state, what side effects should happen
 ;; e.g. write to the database, log, or notify the user
