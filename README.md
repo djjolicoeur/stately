@@ -146,6 +146,26 @@ to see it in action, repl in and
 you will have ~30 seconds to poke around using the functions in the user NS to see
 what is going on in the state store, data store, etc...
 
+### Visualizing your state machine
+
+You can use looms visualization utilities, if you have GraphViz installed.  A
+Vizualization of the example in the dev namespace would look as follows
+
+```clojure
+(require '[loom.io :as io])
+
+(require '[stately.graph.directed-graph :as dg])
+
+(io/view (dg/graph (:graph college-application/machine)))
+```
+
+Which yields
+
+![](doc/college_application_graph.png)
+
+
+
+
 ### What happens when I stop and start a system?  Do I lose everything?
 
 There is a function in `stately.core`, `stately.core/bootstrap-executor` that
