@@ -388,7 +388,6 @@
    :accept-applicant accept-applicant
    :reject-applicant reject-applicant})
 
-
 ;; Define the state machine that drives the behaviour
 (def machine (sm/make-stately college-application-nodes))
 
