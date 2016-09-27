@@ -111,7 +111,7 @@
                                 (dissoc :next-in))))))
   (reschedule [this]
     (let [state (get-state this)
-          data (data this)
+          ref-data (data this)
           now (.getTime (java.util.Date.))
           tx (.getTime (:tx state))
           delta (- now tx)
@@ -120,17 +120,21 @@
                           (- (reschedule-delta-max core))
                           (- (* 24 60 60 1000)))]
       (log/info :task ::reschedule
+                :data? (boolean ref-data)
                 :state state
                 :delta delta
                 :min-next-in min-next-in
                 :max-job-delta max-job-delta)
       (when (and
-             data
+             ref-data
              (not (:reject? state))
-             (not (= :rej (:state state)))
+             (not (= :rej (:state state))) ;;handle legacy rejections
              (:next-in state))
         (let [next-in (- (:next-in state) delta)]
-          (log/info :task ::reschedule :next-in next-in :min-next-in min-next-in)
+          (log/info :task ::reschedule
+                    :msg "Rescheduling Job"
+                    :next-in next-in
+                    :min-next-in min-next-in)
           (if (<= next-in min-next-in)
             (if (> next-in max-job-delta)
               (expire this)
