@@ -99,7 +99,7 @@
     :applicant/gpa 2.2}])
 
 
-(def restart-facts
+(defn restart-facts [now]
   [{:db/id #db/id[:db.part/user -1]
     :model/type :applicant
     :applicant/status :received
@@ -127,7 +127,7 @@
     :application.state/accept? false
     :application.state/reject? false
     :application.state/next-in 3000
-    :application.state/tx (java.util.Date.)}
+    :application.state/tx now}
 
    {:db/id #db/id[:db.part/user -6]
     :model/type :application.state
@@ -136,7 +136,7 @@
     :application.state/accept? false
     :application.state/reject? false
     :application.state/next-in 3000
-    :application.state/tx (java.util.Date.)}])
+    :application.state/tx now}])
 
 
 (defn bootstrap [conn]
@@ -186,7 +186,7 @@
   (component/system-map
    :executor (Executors/newScheduledThreadPool 2)
    :datomic-uri "datomic:mem://stately-test"
-   :facts restart-facts
+   :facts (restart-facts (java.util.Date.))
    :db (component/using (datomic-db) [:datomic-uri :facts])))
 
 
@@ -405,4 +405,6 @@
   (handle-state-fn [this] handle-state-fn)
   (state-store [this] (->ApplicationStateStore system))
   (data-store [this] (->DatomicDataStore system))
-  (executor [this] (mk-executor system)))
+  (executor [this] (mk-executor system))
+  (min-scheduler-interval [this] 50)
+  (reschedule-delta-max [this] (* 60 60 1000)))

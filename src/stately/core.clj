@@ -16,7 +16,9 @@
   (data-fn [this] "fn to get data")
   (state-store [this] "Something that implements the state store protocols")
   (data-store [this] "Something that implements the data store protocols")
-  (executor [this] "Something that implements the Executor protocols"))
+  (executor [this] "Something that implements the Executor protocols")
+  (min-scheduler-interval [this] "minimum interval to schedule next job in ms")
+  (reschedule-delta-max [this] "max age of a job to be loaded on bootstrap in ms."))
 
 
 
@@ -34,6 +36,8 @@
 
 
 (declare executable)
+
+
 
 ;; On of the simplest implementations I can think of to illustrate
 ;; the major points of what I'm trying to do with this project.
@@ -58,7 +62,9 @@
     ((handle-state-fn core) core (:state new-state) ref (data this)))
   (schedule-executor [this new-state]
     (exec/schedule (executor core)
-                   (executable core ref new-state) (:next-in new-state)))
+                   (executable core ref new-state)
+                   (max (min-scheduler-interval core)
+                        (:next-in new-state))))
   (input [this event]
     (log/debug :task ::input
                :msg "Received Event"
@@ -70,15 +76,19 @@
       (log/debug :task ::input
                  :msg "State Transition"
                  :state new-state)
+      (persist-state this new-state)
       (if (try (handle-state this new-state)
                (catch Throwable t
                  (log/error :task ::input
                             :msg "Exception Caught in State Transition"
                             :error t)))
-        (do (persist-state this new-state)
-            (when (:next-in new-state)
-              (schedule-executor this new-state)))
-        (persist-state this (assoc state :state :rej)))))
+        (when (:next-in new-state)
+          (schedule-executor this new-state))
+        (persist-state this (-> (assoc state
+                                       :reject? true
+                                       :state :rej
+                                       :tx (java.util.Date.))
+                                (dissoc :next-in))))))
   (expire [this]
     (log/info :task ::expire :msg "Expiring Job" :ref ref)
     (let [state (get-state this)
@@ -86,24 +96,52 @@
           new-state (sm/advance (state-machine core)
                                 :expire (:state state) data)]
       (log/info :task ::expire :expired-to new-state)
+      (persist-state this new-state)
       (if (try (handle-state this new-state)
                (catch Throwable t
                  (log/error :task ::input
                             :msg "Exception Caught in State Transition"
                             :error t)))
-        (do (persist-state this new-state)
-            (when (:next-in new-state)
-              (schedule-executor this new-state)))
-        (persist-state this (assoc state :state :rej)))))
+        (when (:next-in new-state)
+          (schedule-executor this new-state))
+        (persist-state this (-> (assoc state
+                                       :reject? true
+                                       :state :rej
+                                       :tx (java.util.Date.))
+                                (dissoc :next-in))))))
   (reschedule [this]
     (let [state (get-state this)
+          data (data this)
           now (.getTime (java.util.Date.))
           tx (.getTime (:tx state))
-          delta (- now tx)]
-      (when (:next-in state)
+          delta (- now tx)
+          min-next-in (min-scheduler-interval core)
+          max-job-delta (if (reschedule-delta-max core)
+                          (- (reschedule-delta-max core))
+                          (- (* 24 60 60 1000)))]
+      (log/info :task ::reschedule
+                :state state
+                :delta delta
+                :min-next-in min-next-in
+                :max-job-delta max-job-delta)
+      (when (and
+             data
+             (not (:reject? state))
+             (not (= :rej (:state state)))
+             (:next-in state))
         (let [next-in (- (:next-in state) delta)]
-          (exec/schedule (executor core)
-                         (executable core ref state) (max next-in 0)))))))
+          (log/info :task ::reschedule :next-in next-in :min-next-in min-next-in)
+          (if (<= next-in min-next-in)
+            (if (> next-in max-job-delta)
+              (expire this)
+              (persist-state this (-> (assoc state
+                                             :reject? true
+                                             :state :rej
+                                             :tx (java.util.Date.))
+                                      (dissoc :next-in))))
+            (exec/schedule (executor core)
+                           (executable core ref state)
+                           (max min-next-in next-in))))))))
 
 (defn executable [core ref state]
   (fn []
