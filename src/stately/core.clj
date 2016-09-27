@@ -5,7 +5,7 @@
             [stately.components.data-store :as ds]
             [stately.components.state-store :as ss]
             [stately.components.executor :as exec]
-            [clojure.tools.logging :refer [info]])
+            [clojure.tools.logging :as log])
   (:import java.util.concurrent.Executors
            java.util.concurrent.TimeUnit))
 
@@ -16,7 +16,9 @@
   (data-fn [this] "fn to get data")
   (state-store [this] "Something that implements the state store protocols")
   (data-store [this] "Something that implements the data store protocols")
-  (executor [this] "Something that implements the Executor protocols"))
+  (executor [this] "Something that implements the Executor protocols")
+  (min-scheduler-interval [this] "minimum interval to schedule next job in ms")
+  (reschedule-delta-max [this] "max age of a job to be loaded on bootstrap in ms."))
 
 
 
@@ -35,6 +37,8 @@
 
 (declare executable)
 
+
+
 ;; On of the simplest implementations I can think of to illustrate
 ;; the major points of what I'm trying to do with this project.
 ;; Here we have
@@ -46,7 +50,7 @@
   IStately
   (get-state [this] (ss/get-state (state-store core) ref))
   (persist-state [this new-state]
-    (info :new-state new-state)
+    (log/info :task ::persist-state :new-state new-state)
     (if (:accept? new-state)
       (ss/evict-state! (state-store core) ref)
       (ss/persist-state! (state-store core) ref new-state)))
@@ -58,45 +62,97 @@
     ((handle-state-fn core) core (:state new-state) ref (data this)))
   (schedule-executor [this new-state]
     (exec/schedule (executor core)
-                   (executable core ref new-state) (:next-in new-state)))
+                   (executable core ref new-state)
+                   (max (min-scheduler-interval core)
+                        (:next-in new-state))))
   (input [this event]
-    (info "Received Event" event)
+    (log/debug :task ::input
+               :msg "Received Event"
+               :event event)
     (let [state (get-state this)
           data (data this event)
           new-state (sm/advance (state-machine core)
                                 :input (:state state) data event)]
-      (info "Transitioned to State" new-state)
-      (when (handle-state this new-state)
-        (persist-state this new-state)
+      (log/debug :task ::input
+                 :msg "State Transition"
+                 :state new-state)
+      (persist-state this new-state)
+      (if (try (handle-state this new-state)
+               (catch Throwable t
+                 (log/error :task ::input
+                            :msg "Exception Caught in State Transition"
+                            :error t)))
         (when (:next-in new-state)
-          (schedule-executor this new-state)))))
+          (schedule-executor this new-state))
+        (persist-state this (-> (assoc state
+                                       :reject? true
+                                       :state :rej
+                                       :tx (java.util.Date.))
+                                (dissoc :next-in))))))
   (expire [this]
-    (info "Expiring" ref)
+    (log/info :task ::expire :msg "Expiring Job" :ref ref)
     (let [state (get-state this)
           data (data this)
           new-state (sm/advance (state-machine core)
                                 :expire (:state state) data)]
-      (info "Expired to State" new-state)
-      (when (handle-state this new-state)
-        (persist-state this new-state)
+      (log/info :task ::expire :expired-to new-state)
+      (persist-state this new-state)
+      (if (try (handle-state this new-state)
+               (catch Throwable t
+                 (log/error :task ::input
+                            :msg "Exception Caught in State Transition"
+                            :error t)))
         (when (:next-in new-state)
-          (schedule-executor this new-state)))))
+          (schedule-executor this new-state))
+        (persist-state this (-> (assoc state
+                                       :reject? true
+                                       :state :rej
+                                       :tx (java.util.Date.))
+                                (dissoc :next-in))))))
   (reschedule [this]
     (let [state (get-state this)
+          ref-data (data this)
           now (.getTime (java.util.Date.))
           tx (.getTime (:tx state))
-          delta (- now tx)]
-      (when (:next-in state)
+          delta (- now tx)
+          min-next-in (min-scheduler-interval core)
+          max-job-delta (if (reschedule-delta-max core)
+                          (- (reschedule-delta-max core))
+                          (- (* 24 60 60 1000)))]
+      (log/info :task ::reschedule
+                :data? (boolean ref-data)
+                :state state
+                :delta delta
+                :min-next-in min-next-in
+                :max-job-delta max-job-delta)
+      (when (and
+             ref-data
+             (not (:reject? state))
+             (not (= :rej (:state state))) ;;handle legacy rejections
+             (:next-in state))
         (let [next-in (- (:next-in state) delta)]
-          (exec/schedule (executor core)
-                         (executable core ref state) (max next-in 0)))))))
+          (log/info :task ::reschedule
+                    :msg "Rescheduling Job"
+                    :next-in next-in
+                    :min-next-in min-next-in)
+          (if (<= next-in min-next-in)
+            (if (> next-in max-job-delta)
+              (expire this)
+              (persist-state this (-> (assoc state
+                                             :reject? true
+                                             :state :rej
+                                             :tx (java.util.Date.))
+                                      (dissoc :next-in))))
+            (exec/schedule (executor core)
+                           (executable core ref state)
+                           (max min-next-in next-in))))))))
 
 (defn executable [core ref state]
   (fn []
-    (info "Executing Scheduled Job" "")
+    (log/info :task ::executable :msg "Executing Scheduled Job" :ref ref)
     (let [current (->SimpleStately core ref)
           new-state (get-state current)]
-      (info "New State" new-state "Old State" state)
+      (log/debug :task ::executable :new-state new-state :old-state state)
       (when (= state new-state)
         (expire current)))))
 

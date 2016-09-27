@@ -1,4 +1,4 @@
-(defproject stately "0.1.0-SNAPSHOT"
+(defproject stately "0.1.2-SNAPSHOT"
   :description "FIXME: write description"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
@@ -15,10 +15,5 @@
                                   [org.slf4j/jul-to-slf4j "1.7.7"]
                                   [org.slf4j/jcl-over-slf4j "1.7.7"]
                                   [org.slf4j/log4j-over-slf4j "1.7.7"]
-                                  [log4j/log4j "1.2.17"
-                                   :exclusions [javax.mail/mail
-                                                javax.jms/jms
-                                                com.sun.jmdk/jmxtools
-                                                com.sun.jmx/jmxri]]]
-                   :plugins [[cider/cider-nrepl "0.10.0-SNAPSHOT"]]}
-             :test {:dependencies [[com.datomic/datomic-free "0.9.5344"]]}})
+                                  [com.datomic/datomic-free "0.9.5344"
+                                   :exclusions [joda-time org.slf4j/slf4j-nop]]]}})

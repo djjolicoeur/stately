@@ -1,5 +1,6 @@
 (ns stately.resumable-executor
   (:require [clojure.test :refer :all]
+            [clojure.tools.logging :as log]
             [stately.core :as stately]
             [stately.graph.node :as node]
             [stately.graph.directed-graph :as dag]
@@ -31,13 +32,15 @@
 
 (deftest test-resumable-executor
   (testing "states are moved into executor on bootstrap"
-    (let [core (->Core *system*)
+    (let [_ (log/info :task :enter :t (java.util.Date.))
+          core (->Core *system*)
           _ (stately/bootstrap-executor core)
           r-count (count-status (d/db (:conn (:db *system*))) :received)
           c-count (count-states (d/db (:conn (:db *system*))))
-          _ (Thread/sleep 4000)
+          _ (Thread/sleep 5000)
           evicted-count (count-states (d/db (:conn (:db *system*))))
-          accepted-count (count-status (d/db (:conn (:db *system*))) :accepted)]
+          accepted-count (count-status (d/db (:conn (:db *system*))) :accepted)
+          _ (log/info :task ::exit :exit :t (java.util.Date.))]
       (is (= 2 r-count))
       (is (= 2 c-count))
       (is (= 0 evicted-count))
