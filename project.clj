@@ -8,6 +8,7 @@
                  [org.clojure/tools.nrepl "0.2.10"]
                  [org.clojure/tools.namespace "0.2.3"]
                  [com.stuartsierra/component "0.2.3"]
+                 [manifold "0.1.5"]
                  [aysylu/loom "0.5.4"]]
   :profiles {:dev {:source-paths ["dev"]
                    :dependencies [[ch.qos.logback/logback-classic "1.1.2"

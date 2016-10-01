@@ -129,6 +129,8 @@
   (handle-state-fn [this] handle-state-fn)
   (state-store [this] (:atom-store state-store))
   (data-store [this] (:data-store data-store))
+  (min-scheduler-interval [this] 0)
+  (reschedule-delta-max [this] Integer/MAX_VALUE)
   (executor [this] (:basic-executor executor)))
 
 (defn new-core []
