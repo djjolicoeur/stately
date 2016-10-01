@@ -2,7 +2,7 @@
   (:require [loom.graph :as graph]
             [stately.graph.node :as node]
             [stately.graph.directed-graph :as dg]
-            [clojure.tools.logging :refer [info]]))
+            [clojure.tools.logging :as log]))
 
 
 ;; StateMachine protocol.
@@ -12,7 +12,8 @@
 (defprotocol IStateMachine
   (advance
     [g action state data]
-    [g action state data event]))
+    [g action state data event]
+    "Advance to next valid state"))
 
 
 ;; Next state multimethod.  Allows us to use a
@@ -21,22 +22,35 @@
   (fn [_ action & args] action))
 
 
+(defn- transition-state
+  [g state next]
+  (if (graph/has-edge? (dg/graph g) state next)
+    next
+    (do
+      (log/error :at ::transition-state
+                 :error "Invalid State Transition from :state->:next"
+                 :state state
+                 :next next)
+      :rej)))
+
 ;; Determine what the next state should be given an input event
 (defmethod next-state :input
   ([g action state data event]
+   (log/debug :at ::next-state :state state :data data :event event)
    (let [next (node/send-input (get (dg/nodes  g) state) data event)]
-     (if (graph/has-edge? (dg/graph g) state next) next :rej)))
+     (transition-state g state next)))
   ([g action state data]
+   (log/debug :at ::next-state :state state :data data)
    (let [next (node/send-input (get (dg/nodes  g) state) data)]
-     (if (graph/has-edge? (dg/graph g) state next) next :rej))))
+     (transition-state g state next))))
 
 
 ;; Determine what the next state should be given a timeout
 (defmethod next-state :expire [g action state data]
-  (info "EXPIRE NEXT STATE" data)
+  (log/debug :at ::next-state :state state :data data)
   (let [next (node/send-timeout (get (dg/nodes g) state) data)]
-    (info "EXPIRE NEXT" next)
-    (if (graph/has-edge? (dg/graph g) state next) next :rej)))
+    (log/debug :at ::next-state :stage :next :next next)
+    (transition-state g state next)))
 
 ;; Next at mutlimethod -- not all Nodes implement TimeoutNode
 (defmulti expire-in
